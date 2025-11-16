@@ -1,0 +1,84 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model passages {
+  id               String             @id
+  title            String
+  content          String
+  timeLimit        Int                @default(20)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime
+  questions        questions[]
+  topic_interviews topic_interviews[]
+  user_responses   user_responses[]
+}
+
+model questions {
+  id                String         @id
+  passageId         String
+  questionText      String
+  recommendedAnswer String
+  order             Int            @default(0)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime
+  passages          passages       @relation(fields: [passageId], references: [id], onDelete: Cascade)
+  user_answers      user_answers[]
+}
+
+model topic_interviews {
+  id                     String   @id
+  userId                 String
+  fullTranscript         String
+  duration               Int
+  comprehensionScore     Float?
+  fluencyScore           Float?
+  lexicalScore           Float?
+  grammaticalScore       Float?
+  pronunciationScore     Float?
+  responsivenessScore    Float?
+  overallScore           Float?
+  comprehensionFeedback  String?
+  fluencyFeedback        String?
+  lexicalFeedback        String?
+  grammaticalFeedback    String?
+  pronunciationFeedback  String?
+  responsivenessFeedback String?
+  questionsAsked         String
+  userAnswers            String
+  recommendedAnswers     String
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime
+  passageId              String
+  passages               passages @relation(fields: [passageId], references: [id], onDelete: Cascade)
+}
+
+model user_answers {
+  id             String         @id
+  responseId     String
+  questionId     String
+  userAnswer     String
+  rating         Float?
+  feedback       String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime
+  questions      questions      @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user_responses user_responses @relation(fields: [responseId], references: [id], onDelete: Cascade)
+}
+
+model user_responses {
+  id             String         @id
+  userId         String
+  passageId      String
+  fullTranscript String
+  voiceDuration  Int
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime
+  user_answers   user_answers[]
+  passages       passages       @relation(fields: [passageId], references: [id], onDelete: Cascade)
+}
