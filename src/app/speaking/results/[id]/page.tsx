@@ -9,6 +9,9 @@ interface Session {
   userId: string;
   passageId: string;
   fullTranscript: string;
+  questionsAsked?: string | null;
+  userAnswers?: string | null;
+  recommendedAnswers?: string | null;
   duration: number;
   comprehensionScore: number | null;
   fluencyScore: number | null;
@@ -28,8 +31,70 @@ interface Session {
     id: string;
     title: string;
     content: string;
+    questions?: Array<{
+      id: string;
+      questionText: string;
+      recommendedAnswer: string;
+      order: number;
+    }>;
   };
 }
+
+type ScoreColor = 'green' | 'yellow' | 'orange' | 'red' | 'gray';
+
+const SCORE_THEME: Record<
+  ScoreColor,
+  {
+    border: string;
+    icon: string;
+    value: string;
+    label: string;
+    progress: string;
+  }
+> = {
+  green: {
+    border: 'border-green-100',
+    icon: 'bg-green-100 text-green-600',
+    value: 'text-green-700',
+    label: 'text-green-600',
+    progress: 'bg-green-500',
+  },
+  yellow: {
+    border: 'border-yellow-100',
+    icon: 'bg-yellow-100 text-yellow-600',
+    value: 'text-yellow-700',
+    label: 'text-yellow-600',
+    progress: 'bg-yellow-500',
+  },
+  orange: {
+    border: 'border-orange-100',
+    icon: 'bg-orange-100 text-orange-600',
+    value: 'text-orange-700',
+    label: 'text-orange-600',
+    progress: 'bg-orange-500',
+  },
+  red: {
+    border: 'border-red-100',
+    icon: 'bg-red-100 text-red-600',
+    value: 'text-red-700',
+    label: 'text-red-600',
+    progress: 'bg-red-500',
+  },
+  gray: {
+    border: 'border-gray-100',
+    icon: 'bg-gray-100 text-gray-600',
+    value: 'text-gray-700',
+    label: 'text-gray-600',
+    progress: 'bg-gray-400',
+  },
+};
+
+const clampScore = (score: number | null) => {
+  if (typeof score !== 'number' || Number.isNaN(score)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, score));
+};
 
 export default function ResultsPage() {
   const router = useRouter();
@@ -66,7 +131,7 @@ export default function ResultsPage() {
     }
   };
 
-  const getScoreColor = (score: number | null) => {
+  const getScoreColor = (score: number | null): ScoreColor => {
     if (score === null) return 'gray';
     if (score >= 80) return 'green';
     if (score >= 60) return 'yellow';
@@ -88,6 +153,7 @@ export default function ResultsPage() {
     return `${mins}m ${secs}s`;
   };
 
+
   const ScoreCard = ({
     title,
     score,
@@ -101,21 +167,25 @@ export default function ResultsPage() {
   }) => {
     const color = getScoreColor(score);
     const label = getScoreLabel(score);
+    const theme = SCORE_THEME[color];
+    const scoreValue =
+      typeof score === 'number' && !Number.isNaN(score) ? Math.round(score) : null;
+    const progressWidth = clampScore(score);
 
     return (
-      <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+      <div className={`bg-white rounded-xl border ${theme.border} shadow-sm p-6 hover:shadow-md transition-shadow`}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-3">
-            <div className={`p-2 rounded-lg bg-${color}-100 text-${color}-600`}>
+            <div className={`p-2 rounded-lg ${theme.icon}`}>
               {icon}
             </div>
             <h3 className="font-semibold text-gray-900">{title}</h3>
           </div>
           <div className="text-right">
-            <div className={`text-3xl font-bold text-${color}-600`}>
-              {score !== null ? score : '-'}
+            <div className={`text-3xl font-bold ${theme.value}`}>
+              {scoreValue !== null ? `${scoreValue}%` : '–'}
             </div>
-            <div className={`text-xs font-medium text-${color}-600`}>
+            <div className={`text-xs font-semibold uppercase tracking-wide ${theme.label}`}>
               {label}
             </div>
           </div>
@@ -125,6 +195,14 @@ export default function ResultsPage() {
             <p className="text-sm text-gray-700 leading-relaxed">{feedback}</p>
           </div>
         )}
+        <div className="mt-4">
+          <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+            <div
+              className={`h-full ${theme.progress} transition-all duration-300`}
+              style={{ width: `${progressWidth}%` }}
+            />
+          </div>
+        </div>
       </div>
     );
   };
@@ -155,6 +233,59 @@ export default function ResultsPage() {
       </div>
     );
   }
+
+  const transcriptSegments = session.fullTranscript
+    ? session.fullTranscript
+        .split(/\n{2,}/)
+        .map((segment) => segment.trim())
+        .filter(Boolean)
+    : [];
+  const userTurns = transcriptSegments.filter((segment) =>
+    segment.startsWith('USER:')
+  ).length;
+  const tutorTurns = transcriptSegments.filter((segment) =>
+    segment.startsWith('ASSISTANT:')
+  ).length;
+  const totalWords = session.fullTranscript
+    ? session.fullTranscript.split(/\s+/).filter(Boolean).length
+    : 0;
+  const questionCount =
+    (session.questionsAsked &&
+      session.questionsAsked.split('|||').filter(Boolean).length) ||
+    session.passages?.questions?.length ||
+    0;
+  const availableScores = [
+    session.comprehensionScore,
+    session.fluencyScore,
+    session.lexicalScore,
+    session.grammaticalScore,
+    session.pronunciationScore,
+    session.responsivenessScore,
+  ].filter(
+    (value): value is number =>
+      typeof value === 'number' && !Number.isNaN(value)
+  );
+  const averageScore = availableScores.length
+    ? Math.round(
+        availableScores.reduce((sum, value) => sum + value, 0) /
+          availableScores.length
+      )
+    : null;
+  const overallScoreValue =
+    typeof session.overallScore === 'number' && !Number.isNaN(session.overallScore)
+      ? Math.round(session.overallScore)
+      : null;
+
+  const sessionStats: Array<{ label: string; value: number | string }> = [
+    { label: 'Questions Covered', value: questionCount },
+    { label: 'User Turns', value: userTurns },
+    { label: 'AI Tutor Turns', value: tutorTurns },
+    { label: 'Total Words Spoken', value: totalWords },
+    {
+      label: 'Average Score',
+      value: averageScore !== null ? `${averageScore}%` : '—',
+    },
+  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -202,7 +333,7 @@ export default function ResultsPage() {
             </div>
             <div className="text-center">
               <div className="text-6xl font-bold mb-2">
-                {session.overallScore !== null ? session.overallScore : '-'}
+                {overallScoreValue !== null ? `${overallScoreValue}%` : '–'}
               </div>
               <div className="text-xl font-medium text-blue-100">
                 {getScoreLabel(session.overallScore)}
@@ -310,6 +441,28 @@ export default function ResultsPage() {
           </div>
         </div>
 
+        {/* Session Metrics */}
+        <div className="mb-8">
+          <h2 className="text-2xl font-semibold text-gray-900 mb-6">
+            Session Metrics
+          </h2>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {sessionStats.map((stat) => (
+              <div
+                key={stat.label}
+                className="bg-white rounded-xl border border-gray-100 shadow-sm p-4"
+              >
+                <p className="text-sm text-gray-500">{stat.label}</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {typeof stat.value === 'number'
+                    ? stat.value.toLocaleString()
+                    : stat.value}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Transcript Section */}
         <div className="bg-white rounded-lg shadow-md overflow-hidden">
           <button
@@ -368,4 +521,3 @@ export default function ResultsPage() {
     </div>
   );
 }
-
